@@ -59,8 +59,8 @@ import java.lang.ref.WeakReference
  * When used remotely (from another process), this component lacks access to an [android.app.Activity]
  * instance, and as such it does not have full access to the set of Godot UI capabilities.
  *
- * Limitations: As of version 4.5, use of vulkan + swappy causes [GodotService] to crash as swappy requires an Activity
- * context. So [GodotService] should be used with OpenGL or with Vulkan with swappy disabled.
+ * Note: Vulkan frame pacing in [GodotService] requires Swappy 2.3+; with older Swappy prebuilts, Godot automatically
+ * falls back to unpaced Vulkan presentation when hosted without an [android.app.Activity].
  */
 open class GodotService : Service() {
 

@@ -656,12 +656,10 @@ Error RenderingDeviceDriverVulkan::_initialize_device_extensions() {
 			SwappyVk_determineDeviceExtensions(physical_device, device_extension_count,
 					device_extensions.ptr(), &swappy_required_extensions_count, swappy_required_extensions);
 
-			// Enable extensions requested by Swappy.
+			// Enable extensions requested by Swappy (e.g. VK_GOOGLE_display_timing).
 			for (uint32_t i = 0; i < swappy_required_extensions_count; i++) {
 				CharString extension_name(swappy_required_extensions[i]);
-				if (requested_device_extensions.has(extension_name)) {
-					enabled_device_extension_names.insert(extension_name);
-				}
+				enabled_device_extension_names.insert(extension_name);
 			}
 
 			free(pRequiredExtensionsData);
@@ -1901,6 +1899,18 @@ Error RenderingDeviceDriverVulkan::initialize(uint32_t p_device_index, uint32_t 
 		queue_family_properties[i] = context_driver->queue_family_get(p_device_index, i);
 	}
 
+#if defined(SWAPPY_FRAME_PACING_ENABLED)
+	swappy_frame_pacer_enable = GLOBAL_GET("display/window/frame_pacing/android/enable_frame_pacing");
+	swappy_mode = GLOBAL_GET("display/window/frame_pacing/android/swappy_mode");
+
+	if (VulkanHooks::get_singleton() != nullptr) {
+		// Hooks control device creation & possibly presentation
+		// (e.g. OpenXR) thus it's too risky to use Swappy.
+		swappy_frame_pacer_enable = false;
+		OS::get_singleton()->print("VulkanHooks detected (e.g. OpenXR): Force-disabling Swappy Frame Pacing.\n");
+	}
+#endif
+
 	Error err = _initialize_device_extensions();
 	ERR_FAIL_COND_V_MSG(err != OK, err, "Couldn't initialize Vulkan device extensions. This may be caused by an incompatible or outdated graphics driver.");
 
@@ -1931,17 +1941,6 @@ Error RenderingDeviceDriverVulkan::initialize(uint32_t p_device_index, uint32_t 
 	breadcrumb_buffer = buffer_create(2u * sizeof(uint32_t) * BREADCRUMB_BUFFER_ENTRIES, BufferUsageBits::BUFFER_USAGE_TRANSFER_TO_BIT, MemoryAllocationType::MEMORY_ALLOCATION_TYPE_CPU, UINT64_MAX);
 #endif
 
-#if defined(SWAPPY_FRAME_PACING_ENABLED)
-	swappy_frame_pacer_enable = GLOBAL_GET("display/window/frame_pacing/android/enable_frame_pacing");
-	swappy_mode = GLOBAL_GET("display/window/frame_pacing/android/swappy_mode");
-
-	if (VulkanHooks::get_singleton() != nullptr) {
-		// Hooks control device creation & possibly presentation
-		// (e.g. OpenXR) thus it's too risky to use Swappy.
-		swappy_frame_pacer_enable = false;
-		OS::get_singleton()->print("VulkanHooks detected (e.g. OpenXR): Force-disabling Swappy Frame Pacing.\n");
-	}
-#endif
 
 	shader_container_format.set_debug_info_enabled(Engine::get_singleton()->is_generate_spirv_debug_info_enabled());
 
@@ -3921,8 +3920,28 @@ Error RenderingDeviceDriverVulkan::swap_chain_resize(CommandQueueID p_cmd_queue,
 
 #if defined(SWAPPY_FRAME_PACING_ENABLED)
 	if (swappy_frame_pacer_enable) {
-		SwappyVk_initAndGetRefreshCycleDuration(get_jni_env(), static_cast<OS_Android *>(OS::get_singleton())->get_godot_java()->get_activity(), physical_device,
-				vk_device, swap_chain->vk_swapchain, &swap_chain->refresh_duration);
+		GodotJavaWrapper *godot_java = static_cast<OS_Android *>(OS::get_singleton())->get_godot_java();
+		JNIEnv *env = get_jni_env();
+		jobject host_context = godot_java != nullptr ? godot_java->get_activity() : nullptr;
+		if (host_context == nullptr && godot_java != nullptr && Swappy_version() >= ANDROID_GAMESDK_PACKED_VERSION(2, 3, 0)) {
+			// Swappy 2.3+ accepts any android.content.Context (e.g. Service or Application),
+			// enabling frame pacing when Godot is hosted by GodotService.
+			host_context = godot_java->get_context();
+		}
+		if (host_context == nullptr) {
+			WARN_PRINT_ONCE("Swappy frame pacing requires an Activity host with Swappy < 2.3; falling back to unpaced presentation.");
+			swappy_frame_pacer_enable = false;
+		} else {
+			bool swappy_initialized = SwappyVk_initAndGetRefreshCycleDuration(env, host_context, physical_device,
+					vk_device, swap_chain->vk_swapchain, &swap_chain->refresh_duration);
+			env->DeleteLocalRef(host_context);
+			if (!swappy_initialized) {
+				WARN_PRINT_ONCE("Failed to initialize Swappy frame pacer; falling back to unpaced presentation.");
+				swappy_frame_pacer_enable = false;
+			}
+		}
+	}
+	if (swappy_frame_pacer_enable) {
 		SwappyVk_setWindow(vk_device, swap_chain->vk_swapchain, static_cast<OS_Android *>(OS::get_singleton())->get_native_window());
 		SwappyVk_setSwapIntervalNS(vk_device, swap_chain->vk_swapchain, swap_chain->refresh_duration);
 
