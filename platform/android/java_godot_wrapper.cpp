@@ -92,6 +92,7 @@ GodotJavaWrapper::GodotJavaWrapper(JNIEnv *p_env, jobject p_godot_native_bridge)
 	_on_distraction_free_mode_changed = p_env->GetMethodID(godot_native_bridge_class, "nativeOnDistractionFreeModeChanged", "(Z)V");
 	_show_editor_game_dock = p_env->GetMethodID(godot_native_bridge_class, "nativeShowEditorGameDock", "()V");
 	_get_activity = p_env->GetMethodID(godot_native_bridge_class, "getActivity", "()Landroid/app/Activity;");
+	_get_context = p_env->GetMethodID(godot_native_bridge_class, "getContext", "()Landroid/content/Context;");
 	_build_env_connect = p_env->GetMethodID(godot_native_bridge_class, "nativeBuildEnvConnect", "(Lorg/godotengine/godot/variant/Callable;)Z");
 	_build_env_disconnect = p_env->GetMethodID(godot_native_bridge_class, "nativeBuildEnvDisconnect", "()V");
 	_build_env_execute = p_env->GetMethodID(godot_native_bridge_class, "nativeBuildEnvExecute", "(Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lorg/godotengine/godot/variant/Callable;Lorg/godotengine/godot/variant/Callable;)I");
@@ -126,6 +127,16 @@ jobject GodotJavaWrapper::get_activity() {
 		ERR_FAIL_NULL_V(env, nullptr);
 		jobject activity = env->CallObjectMethod(godot_native_bridge, _get_activity);
 		return activity;
+	}
+	return nullptr;
+}
+
+jobject GodotJavaWrapper::get_context() {
+	if (_get_context) {
+		JNIEnv *env = get_jni_env();
+		ERR_FAIL_NULL_V(env, nullptr);
+		jobject context = env->CallObjectMethod(godot_native_bridge, _get_context);
+		return context;
 	}
 	return nullptr;
 }

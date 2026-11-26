@@ -3921,8 +3921,28 @@ Error RenderingDeviceDriverVulkan::swap_chain_resize(CommandQueueID p_cmd_queue,
 
 #if defined(SWAPPY_FRAME_PACING_ENABLED)
 	if (swappy_frame_pacer_enable) {
-		SwappyVk_initAndGetRefreshCycleDuration(get_jni_env(), static_cast<OS_Android *>(OS::get_singleton())->get_godot_java()->get_activity(), physical_device,
-				vk_device, swap_chain->vk_swapchain, &swap_chain->refresh_duration);
+		GodotJavaWrapper *godot_java = static_cast<OS_Android *>(OS::get_singleton())->get_godot_java();
+		JNIEnv *env = get_jni_env();
+		jobject host_context = godot_java != nullptr ? godot_java->get_activity() : nullptr;
+		if (host_context == nullptr && godot_java != nullptr && Swappy_version() >= ANDROID_GAMESDK_PACKED_VERSION(2, 3, 0)) {
+			// Swappy 2.3+ accepts any android.content.Context (e.g. Service or Application),
+			// enabling frame pacing when Godot is hosted by GodotService.
+			host_context = godot_java->get_context();
+		}
+		if (host_context == nullptr) {
+			WARN_PRINT_ONCE("Swappy frame pacing requires an Activity host with Swappy < 2.3; falling back to unpaced presentation.");
+			swappy_frame_pacer_enable = false;
+		} else {
+			bool swappy_initialized = SwappyVk_initAndGetRefreshCycleDuration(env, host_context, physical_device,
+					vk_device, swap_chain->vk_swapchain, &swap_chain->refresh_duration);
+			env->DeleteLocalRef(host_context);
+			if (!swappy_initialized) {
+				WARN_PRINT_ONCE("Failed to initialize Swappy frame pacer; falling back to unpaced presentation.");
+				swappy_frame_pacer_enable = false;
+			}
+		}
+	}
+	if (swappy_frame_pacer_enable) {
 		SwappyVk_setWindow(vk_device, swap_chain->vk_swapchain, static_cast<OS_Android *>(OS::get_singleton())->get_native_window());
 		SwappyVk_setSwapIntervalNS(vk_device, swap_chain->vk_swapchain, swap_chain->refresh_duration);
 

@@ -289,6 +289,8 @@ internal class GodotNativeBridge(private val godot: Godot) {
 
 	private fun getActivity() = godot.getActivity()
 
+	private fun getContext(): Context = godot.context
+
 	private fun getRenderView() = godot.renderView
 
 	private fun getClipboard() = godot.getClipboard()
