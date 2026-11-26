@@ -87,6 +87,7 @@ private:
 	jmethodID _on_distraction_free_mode_changed = nullptr;
 	jmethodID _show_editor_game_dock = nullptr;
 	jmethodID _get_activity = nullptr;
+	jmethodID _get_context = nullptr;
 	jmethodID _build_env_connect = nullptr;
 	jmethodID _build_env_disconnect = nullptr;
 	jmethodID _build_env_execute = nullptr;
@@ -106,6 +107,7 @@ public:
 	~GodotJavaWrapper();
 
 	jobject get_activity();
+	jobject get_context();
 
 	GodotJavaViewWrapper *get_godot_view();
 
